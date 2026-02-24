@@ -1,0 +1,51 @@
+{
+  "name": "aicostmanager",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for AI Cost Manager — LLM cost tracking and usage management",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "llm",
+    "cost-management",
+    "usage-tracking",
+    "sdk",
+    "typescript",
+    "openai",
+    "anthropic"
+  ],
+  "author": "Bright Wing Solutions LLC",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "homepage": "https://aicostmanager.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Brightwing-Systems-LLC/aicostmanager-ts"
+  },
+  "bugs": {
+    "url": "https://github.com/Brightwing-Systems-LLC/aicostmanager-ts/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.4"
+  }
+}
