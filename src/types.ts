@@ -189,26 +189,57 @@ export interface LimitEventOut {
 
 // ── Service types ──
 
-export interface VendorOut {
-  uuid: string;
-  name: string;
-}
-
-export interface ServiceOut {
-  uuid: string;
-  service_id: string;
-  vendor: string;
-  name?: string;
-}
-
+/** One rate of a catalog model, e.g. `cost` USD per `per_quantity` input tokens. */
 export interface CostUnitOut {
-  uuid: string;
   name: string;
-  cost: number | string;
-  unit: string;
+  cost: number;
   per_quantity: number;
   currency: string;
-  is_active: boolean;
+  unit: string;
+}
+
+export interface PricingModelMetadata {
+  release_date?: string | null;
+  last_updated_date?: string | null;
+  knowledge_cutoff?: string | null;
+  model_family?: string | null;
+  model_status?: string | null;
+  default_temperature?: number | null;
+  supports_reasoning?: boolean;
+  supports_tool_call?: boolean;
+  supports_structured_output?: boolean;
+  is_open_weights?: boolean;
+  input_modalities?: string[];
+  output_modalities?: string[];
+  max_input_tokens?: number | null;
+}
+
+/**
+ * A model in the AICM pricing catalog. `id` is `<provider_id>::<model_name>`,
+ * the key usage is tracked under. `first_seen_at` is when AICM first listed it.
+ */
+export interface PricingModel {
+  id: string;
+  model_name: string;
+  provider: string;
+  provider_id?: string | null;
+  first_seen_at?: string | null;
+  input_price?: CostUnitOut | null;
+  output_price?: CostUnitOut | null;
+  input_audio_price?: number | null;
+  output_audio_price?: number | null;
+  context_over_200k_price?: number | null;
+  context_window?: number | null;
+  max_output_tokens?: number | null;
+  metadata?: PricingModelMetadata | null;
+  benchmark?: Record<string, unknown> | null;
+}
+
+export interface ListModelsOptions {
+  /** A provider id such as "anthropic". */
+  provider?: string;
+  /** Only models AICM first listed at or after this time (a zone-less string is UTC). */
+  since?: Date | string;
 }
 
 // ── Cost Event types ──
@@ -262,17 +293,17 @@ export interface ApiCostEventOut {
 export interface WebhookEndpointCreate {
   url: string;
   secret: string;
+  purpose?: string;
   active?: boolean;
   tolerance?: number;
 }
 
 export interface WebhookEndpointOut {
+  uuid: string;
   url: string;
-  secret: string;
+  purpose: string;
   active: boolean;
   tolerance: number;
-  uuid: string;
-  team_uuid: string;
   created_at: string;
   updated_at: string;
 }
@@ -286,6 +317,7 @@ export interface WebhookEndpointsResponse {
 export interface WebhookEndpointUpdate {
   url?: string;
   secret?: string;
+  purpose?: string;
   active?: boolean;
   tolerance?: number;
 }

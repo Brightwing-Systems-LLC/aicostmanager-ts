@@ -57,7 +57,7 @@ try {
   assert(client instanceof CostManagerClient, "CostManagerClient is constructable");
   assert(typeof client.listUsageEvents === "function", "has listUsageEvents method");
   assert(typeof client.listCustomers === "function", "has listCustomers method");
-  assert(typeof client.listVendors === "function", "has listVendors method");
+  assert(typeof client.listModels === "function", "has listModels method");
   assert(typeof client.createWebhookEndpoint === "function", "has createWebhookEndpoint method");
   assert(typeof client.listCustomServices === "function", "has listCustomServices method");
   assert(typeof client.getOpenapiSchema === "function", "has getOpenapiSchema method");

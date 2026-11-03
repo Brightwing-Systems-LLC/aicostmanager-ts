@@ -110,10 +110,12 @@ await client.createUsageLimit({
   period: Period.MONTH,
 });
 
-// Vendors & services
-const vendors = await client.listVendors();
-const services = await client.listVendorServices("openai");
-const costs = await client.listServiceCosts("openai", "gpt-4o");
+// Model catalog: every model AICM prices, across all providers
+const all = await client.listModels();
+const anthropic = await client.listModels({ provider: "anthropic" });
+// Poll for new models: pass the newest first_seen_at from the last call
+const fresh = await client.listModels({ since: new Date("2026-11-01T00:00:00Z") });
+const model = await client.getModel("anthropic::claude-fable-5-1");
 
 // Webhooks
 await client.createWebhookEndpoint({ url: "https://example.com/hook", secret: "s3cret" });
@@ -167,10 +169,9 @@ Generic fallback extraction works for any provider following standard patterns.
 | `updateUsageLimit(id, data)` | Update usage limit |
 | `deleteUsageLimit(id)` | Delete usage limit |
 | `listUsageLimitProgress()` | List limit progress |
-| **Vendors / Services** | |
-| `listVendors()` | List vendors |
-| `listVendorServices(vendor)` | List services for vendor |
-| `listServiceCosts(vendor, service)` | List cost units |
+| **Model catalog** | |
+| `listModels({ provider?, since? })` | Every catalog model; `since` keeps those first listed at or after it |
+| `getModel(id)` | One catalog model by `provider::model` id |
 | **Cost Events** | |
 | `listCostEvents(filters?)` | List cost events |
 | `listCostEventsByResponseId(id)` | Get cost events by response ID |
