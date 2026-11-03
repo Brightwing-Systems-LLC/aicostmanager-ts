@@ -14,16 +14,16 @@ import type {
   CustomServiceIn,
   CustomServiceOut,
   CustomServiceSummaryOut,
+  ListModelsOptions,
   PaginatedResponse,
+  PricingModel,
   RollupFilters,
-  ServiceOut,
   UsageEvent,
   UsageEventFilters,
   UsageLimitIn,
   UsageLimitOut,
   UsageLimitProgressOut,
   UsageRollup,
-  VendorOut,
   WebhookEndpointCreate,
   WebhookEndpointOut,
   WebhookEndpointsResponse,
@@ -60,6 +60,7 @@ export class CostManagerClient {
   private apiKey: string;
   private baseUrl: string;
   private apiUrl: string;
+  private teamSlug: string | null = null;
 
   constructor(config: CostManagerClientConfig = {}) {
     const key =
@@ -421,12 +422,30 @@ export class CostManagerClient {
     };
   }
 
-  // ── Vendors / Services ──
+  // ── Model catalog ──
 
-  async listVendors(): Promise<APIResponse<VendorOut[]>> {
-    const { statusCode, data } = await this.request("GET", "/vendors/");
-    if (statusCode === 200 && Array.isArray(data)) {
-      return { ok: true, statusCode, data: data as VendorOut[] };
+  /**
+   * Every model in the AICM pricing catalog, across all providers. Pass the
+   * newest `first_seen_at` from the previous call as `since` to poll for new
+   * models; the unfiltered catalog is over 10,000 models.
+   */
+  async listModels(
+    options: ListModelsOptions = {}
+  ): Promise<APIResponse<PricingModel[]>> {
+    const params: Record<string, string> = {};
+    if (options.since != null) {
+      params.since =
+        options.since instanceof Date
+          ? options.since.toISOString()
+          : options.since;
+    }
+    if (options.provider) params.provider = options.provider;
+    const { statusCode, data } = await this.request("GET", "/pricing/models", {
+      params,
+    });
+    if (statusCode === 200 && data) {
+      const models = (data as { models: PricingModel[] }).models;
+      return { ok: true, statusCode, data: models };
     }
     return {
       ok: false,
@@ -435,33 +454,14 @@ export class CostManagerClient {
     };
   }
 
-  async listVendorServices(vendor: string): Promise<APIResponse<ServiceOut[]>> {
-    const { statusCode, data } = await this.request("GET", "/services/", {
-      params: { vendor },
-    });
-    if (statusCode === 200 && Array.isArray(data)) {
-      const services = (data as Record<string, unknown>[]).map((s) => ({
-        ...s,
-        vendor,
-      }));
-      return { ok: true, statusCode, data: services as ServiceOut[] };
-    }
-    return {
-      ok: false,
-      statusCode,
-      error: CostManagerClient.extractError(statusCode, data),
-    };
-  }
-
-  async listServiceCosts(
-    vendor: string,
-    service: string
-  ): Promise<APIResponse<CostUnitOut[]>> {
-    const { statusCode, data } = await this.request("GET", "/service-costs/", {
-      params: { vendor, service },
-    });
-    if (statusCode === 200 && Array.isArray(data)) {
-      return { ok: true, statusCode, data: data as CostUnitOut[] };
+  /** One catalog model by its id, `<provider_id>::<model_name>`. */
+  async getModel(modelId: string): Promise<APIResponse<PricingModel>> {
+    const { statusCode, data } = await this.request(
+      "GET",
+      `/pricing/models/${modelId}`
+    );
+    if (statusCode === 200 && data) {
+      return { ok: true, statusCode, data: data as PricingModel };
     }
     return {
       ok: false,
@@ -508,14 +508,32 @@ export class CostManagerClient {
 
   // ── Webhooks ──
 
+  /** Webhooks live under the API key's team, whose slug is looked up once. */
+  private async webhooksPath(webhookUuid?: string): Promise<string | null> {
+    if (this.teamSlug === null) {
+      const { statusCode, data } = await this.request("GET", "/teams/");
+      const teams = data as { slug: string }[] | null;
+      if (statusCode !== 200 || !Array.isArray(teams) || !teams.length) {
+        return null;
+      }
+      this.teamSlug = teams[0].slug;
+    }
+    const path = `/teams/${this.teamSlug}/webhooks/`;
+    return webhookUuid ? `${path}${webhookUuid}/` : path;
+  }
+
+  private static noTeam<T>(): APIResponse<T> {
+    return { ok: false, statusCode: 404, error: "Team for this API key not found" };
+  }
+
   async createWebhookEndpoint(
     data: WebhookEndpointCreate
   ): Promise<APIResponse<WebhookEndpointOut>> {
-    const { statusCode, data: resp } = await this.request(
-      "POST",
-      "/webhooks/",
-      { body: data as unknown as Record<string, unknown> }
-    );
+    const path = await this.webhooksPath();
+    if (!path) return CostManagerClient.noTeam();
+    const { statusCode, data: resp } = await this.request("POST", path, {
+      body: data as unknown as Record<string, unknown>,
+    });
     if (statusCode === 201 && resp) {
       return { ok: true, statusCode, data: resp as WebhookEndpointOut };
     }
@@ -529,17 +547,21 @@ export class CostManagerClient {
   async listWebhookEndpoints(
     activeOnly = false
   ): Promise<APIResponse<WebhookEndpointsResponse>> {
-    const params: Record<string, string> = {
-      active_only: String(activeOnly),
-    };
-    const { statusCode, data } = await this.request("GET", "/webhooks/", {
-      params,
-    });
-    if (statusCode === 200 && data) {
+    const path = await this.webhooksPath();
+    if (!path) return CostManagerClient.noTeam();
+    const { statusCode, data } = await this.request("GET", path);
+    if (statusCode === 200 && Array.isArray(data)) {
+      const endpoints = (data as WebhookEndpointOut[]).filter(
+        (e) => e.active || !activeOnly
+      );
       return {
         ok: true,
         statusCode,
-        data: data as WebhookEndpointsResponse,
+        data: {
+          endpoints,
+          total_count: endpoints.length,
+          active_count: endpoints.filter((e) => e.active).length,
+        },
       };
     }
     return {
@@ -552,10 +574,9 @@ export class CostManagerClient {
   async getWebhookEndpoint(
     webhookUuid: string
   ): Promise<APIResponse<WebhookEndpointOut>> {
-    const { statusCode, data } = await this.request(
-      "GET",
-      `/webhooks/${webhookUuid}/`
-    );
+    const path = await this.webhooksPath(webhookUuid);
+    if (!path) return CostManagerClient.noTeam();
+    const { statusCode, data } = await this.request("GET", path);
     if (statusCode === 200 && data) {
       return { ok: true, statusCode, data: data as WebhookEndpointOut };
     }
@@ -570,18 +591,15 @@ export class CostManagerClient {
     webhookUuid: string,
     data: WebhookEndpointUpdate
   ): Promise<APIResponse<WebhookEndpointOut>> {
-    // Only include non-null fields
     const body: Record<string, unknown> = {};
-    if (data.url !== undefined) body.url = data.url;
-    if (data.secret !== undefined) body.secret = data.secret;
-    if (data.active !== undefined) body.active = data.active;
-    if (data.tolerance !== undefined) body.tolerance = data.tolerance;
-
-    const { statusCode, data: resp } = await this.request(
-      "PUT",
-      `/webhooks/${webhookUuid}/`,
-      { body }
-    );
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) body[key] = value;
+    }
+    const path = await this.webhooksPath(webhookUuid);
+    if (!path) return CostManagerClient.noTeam();
+    const { statusCode, data: resp } = await this.request("PATCH", path, {
+      body,
+    });
     if (statusCode === 200 && resp) {
       return { ok: true, statusCode, data: resp as WebhookEndpointOut };
     }
@@ -593,10 +611,9 @@ export class CostManagerClient {
   }
 
   async deleteWebhookEndpoint(webhookUuid: string): Promise<APIResponse<null>> {
-    const { statusCode, data } = await this.request(
-      "DELETE",
-      `/webhooks/${webhookUuid}/`
-    );
+    const path = await this.webhooksPath(webhookUuid);
+    if (!path) return CostManagerClient.noTeam();
+    const { statusCode, data } = await this.request("DELETE", path);
     if (statusCode === 204) {
       return { ok: true, statusCode, data: null };
     }
